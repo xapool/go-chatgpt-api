@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/2captcha/2captcha-go"
 	"github.com/gin-gonic/gin"
 	"github.com/linweiyuan/funcaptcha"
 	"github.com/linweiyuan/go-chatgpt-api/api"
@@ -21,7 +22,7 @@ import (
 //goland:noinspection SpellCheckingInspection
 var (
 	arkoseTokenUrl      string
-	captchaSolverUrl    string
+	captchaSolver       string
 	captchaSolverKey    string
 	PUID                string
 	bx                  string
@@ -30,7 +31,7 @@ var (
 //goland:noinspection SpellCheckingInspection,GoUnhandledErrorResult
 func init() {
 	arkoseTokenUrl = os.Getenv("ARKOSE_TOKEN_URL")
-	captchaSolverUrl = os.Getenv("CAPTCHA_SOLVER_URL")
+	captchaSolver = os.Getenv("CAPTCHA_SOLVER")
 	captchaSolverKey = os.Getenv("CAPTCHA_SOLVER_KEY")
 
 	bx = os.Getenv("BX")
@@ -269,8 +270,8 @@ func setupPUID() {
 
 //goland:noinspection GoUnhandledErrorResult
 func GetArkoseToken() (string, error) {
-	if captchaSolverUrl != "" {
-		return GetTokenWithSolver()
+	if captchaSolver == "2Captcha" {
+		return GetTokenFromSolver()
 	}
 
 	if arkoseTokenUrl == "" {
@@ -322,48 +323,20 @@ func getBX(url string) {
 	}
 }
 
-func GetTokenWithSolver() (string, error) {
-	inUrl := fmt.Sprintf("%s&key=%s&publickey=%s&surl=%s&pageurl=%s", captchaSolverUrl, captchaSolverKey, "35536E1E-65B4-4D96-9D97-6ADB7EFF8147", "https://client-api.arkoselabs.com", "https://chat.openai.com")
-	req, _ := http.NewRequest(http.MethodGet, inUrl, nil)
-	resp, err := api.Client.Do(req)
+func GetTokenFromSolver() (string, error) {
+	client := api2captcha.NewClient(captchaSolverKey)
+	cap := api2captcha.FunCaptcha {
+		SiteKey: "35536E1E-65B4-4D96-9D97-6ADB7EFF8147",
+		Url: "https://chat.openai.com",
+		Surl: "https://client-api.arkoselabs.com",
+		UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+		// Data: map[string]string{"anyKey":"anyValue"},
+    }
+	req := cap.ToRequest()
+	// req.SetProxy("HTTPS", "login:password@IP_address:PORT")
+	arkoseToken, err := client.Solve(req)
 	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", err
-	}
-
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	responseStr := string(body)
-	splitted := strings.Split(responseStr, "|")
-
-	if len(splitted) != 2 {
-		return "", err
-	}
-	id := splitted[1]
-	resUrl := fmt.Sprintf("http://2captcha.com/res.php?key=%s&action=get&id=%s", captchaSolverKey, id)
-
-	req, _ = http.NewRequest(http.MethodGet, resUrl, nil)
-	resp, err = api.Client.Do(req)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", err
-	}
-
-	defer resp.Body.Close()
-	body, err = io.ReadAll(resp.Body)
-	responseStr = string(body)
-	splitted = strings.Split(responseStr, "|")
-
-	arkoseToken := splitted[1]
-	if arkoseToken == "" {
-		return "", nil
+		logger.Error(err.Error())
 	}
 
 	return arkoseToken, nil

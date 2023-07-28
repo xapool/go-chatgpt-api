@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/2captcha/2captcha-go v1.1.2 // indirect
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/bogdanfinn/utls v1.5.16 // indirect
