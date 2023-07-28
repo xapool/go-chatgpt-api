@@ -20,14 +20,18 @@ import (
 
 //goland:noinspection SpellCheckingInspection
 var (
-	arkoseTokenUrl string
-	PUID           string
-	bx             string
+	arkoseTokenUrl      string
+	captchaSolverUrl    string
+	captchaSolverKey    string
+	PUID                string
+	bx                  string
 )
 
 //goland:noinspection SpellCheckingInspection,GoUnhandledErrorResult
 func init() {
 	arkoseTokenUrl = os.Getenv("ARKOSE_TOKEN_URL")
+	captchaSolverUrl = os.Getenv("CAPTCHA_SOLVER_URL")
+	captchaSolverKey = os.Getenv("CAPTCHA_SOLVER_KEY")
 
 	bx = os.Getenv("BX")
 	if bx != "" {
@@ -265,6 +269,10 @@ func setupPUID() {
 
 //goland:noinspection GoUnhandledErrorResult
 func GetArkoseToken() (string, error) {
+	if captchaSolverUrl != "" {
+		return GetTokenWithSolver()
+	}
+
 	if arkoseTokenUrl == "" {
 		return funcaptcha.GetOpenAITokenWithBx(bx)
 	}
@@ -312,4 +320,51 @@ func getBX(url string) {
 
 		time.Sleep(time.Hour)
 	}
+}
+
+func GetTokenWithSolver() (string, error) {
+	inUrl := fmt.Sprintf("%s&key=%s&publickey=%s&surl=%s&pageurl=%s", captchaSolverUrl, captchaSolverKey, "35536E1E-65B4-4D96-9D97-6ADB7EFF8147", "https://client-api.arkoselabs.com", "https://chat.openai.com")
+	req, _ := http.NewRequest(http.MethodGet, inUrl, nil)
+	resp, err := api.Client.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", err
+	}
+
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	responseStr := string(body)
+	splitted := strings.Split(responseStr, "|")
+
+	if len(splitted) != 2 {
+		return "", err
+	}
+	id := splitted[1]
+	resUrl := fmt.Sprintf("http://2captcha.com/res.php?key=%s&action=get&id=%s", captchaSolverKey, id)
+
+	req, _ = http.NewRequest(http.MethodGet, resUrl, nil)
+	resp, err = api.Client.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", err
+	}
+
+	defer resp.Body.Close()
+	body, err = io.ReadAll(resp.Body)
+	responseStr = string(body)
+	splitted = strings.Split(responseStr, "|")
+
+	arkoseToken := splitted[1]
+	if arkoseToken == "" {
+		return "", nil
+	}
+
+	return arkoseToken, nil
 }
